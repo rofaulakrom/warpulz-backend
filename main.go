@@ -86,5 +86,6 @@ func main() {
 	}
 
 	// WAJIB: Gunakan 0.0.0.0 agar Hugging Face bisa mendeteksi servernya di IPv4
-	e.Logger.Fatal(e.Start("0.0.0.0:" + port))
+	// Paksa nyala di IPv4 dan Port 7860
+    e.Logger.Fatal(e.Start("0.0.0.0:7860"))
 }
