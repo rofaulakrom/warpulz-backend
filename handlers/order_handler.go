@@ -25,8 +25,7 @@ var validate = validator.New()
 
 var (
 	MidtransServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
-	EmailSender       = os.Getenv("EMAIL_SENDER")
-	EmailPassword     = os.Getenv("EMAIL_PASSWORD")
+	// Variabel Email dihapus dari sini agar dipanggil langsung di dalam fungsinya
 )
 
 // --- CONFIG CUSTOM DATA TOKO ---
@@ -44,7 +43,7 @@ var StoreConfig = map[string]string{
 // FUNGSI BARU: GENERATE STRUK PDF
 // ==========================================
 func generateReceiptPDF(order *models.Order) (string, error) {
-	pdf := gofpdf.New("P", "mm", "A5", "") 
+	pdf := gofpdf.New("P", "mm", "A5", "")
 	pdf.AddPage()
 
 	// Header Toko
@@ -75,7 +74,7 @@ func generateReceiptPDF(order *models.Order) (string, error) {
 	pdf.SetFont("Arial", "B", 10)
 	pdf.CellFormat(0, 6, "DAFTAR PESANAN:", "", 1, "L", false, 0, "")
 	pdf.SetFont("Arial", "", 10)
-	
+
 	items := strings.Split(order.ProductName, " | ")
 	for _, item := range items {
 		pdf.MultiCell(0, 5, "- "+item, "", "L", false)
@@ -89,7 +88,7 @@ func generateReceiptPDF(order *models.Order) (string, error) {
 	pdf.SetFont("Arial", "B", 12)
 	pdf.CellFormat(80, 8, "TOTAL BAYAR", "", 0, "L", false, 0, "")
 	pdf.CellFormat(48, 8, fmt.Sprintf("Rp %d", order.TotalPrice), "", 1, "R", false, 0, "")
-	
+
 	pdf.SetFont("Arial", "B", 10)
 	pdf.CellFormat(80, 6, "STATUS", "", 0, "L", false, 0, "")
 	pdf.CellFormat(48, 6, strings.ToUpper(order.Status), "", 1, "R", false, 0, "")
@@ -103,7 +102,7 @@ func generateReceiptPDF(order *models.Order) (string, error) {
 	pdf.CellFormat(0, 6, "INFO WIFI", "", 1, "C", false, 0, "")
 	pdf.SetFont("Arial", "", 10)
 	pdf.CellFormat(0, 5, fmt.Sprintf("SSID: %s | Pass: %s", StoreConfig["WiFi_User"], StoreConfig["WiFi_Pass"]), "", 1, "C", false, 0, "")
-	
+
 	pdf.Ln(5)
 	pdf.SetFont("Arial", "I", 10)
 	pdf.CellFormat(0, 6, StoreConfig["Greeting"], "", 1, "C", false, 0, "")
@@ -141,24 +140,28 @@ func sendReceiptEmail(order *models.Order) {
 		return
 	}
 
+	// PERBAIKAN: Ambil variabel environment tepat saat fungsi dijalankan
+	EmailSender := os.Getenv("EMAIL_SENDER")
+	EmailPassword := os.Getenv("EMAIL_PASSWORD")
+
 	m := gomail.NewMessage()
 	m.SetHeader("From", EmailSender)
 	m.SetHeader("To", order.CustomerEmail)
 	m.SetHeader("Subject", "✅ Pembayaran Berhasil - "+order.InvoiceNumber)
 
 	htmlBody := fmt.Sprintf(`
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; text-align: center;">
-            <h2 style="color: #16a34a;">Pembayaran Berhasil!</h2>
-            <p>Halo, <b>%s</b>!</p>
-            <p>Terima kasih, pembayaran Anda untuk pesanan <b>%s</b> telah kami terima.</p>
-            <p>Silakan lihat lampiran PDF pada email ini untuk mengunduh Struk Digital Anda (termasuk password WiFi).</p>
-            <br/>
-            <p style="color: #64748b; font-size: 12px;">%s</p>
-        </div>
-    `, order.CustomerName, order.InvoiceNumber, StoreConfig["Greeting"])
+		<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; text-align: center;">
+			<h2 style="color: #16a34a;">Pembayaran Berhasil!</h2>
+			<p>Halo, <b>%s</b>!</p>
+			<p>Terima kasih, pembayaran Anda untuk pesanan <b>%s</b> telah kami terima.</p>
+			<p>Silakan lihat lampiran PDF pada email ini untuk mengunduh Struk Digital Anda (termasuk password WiFi).</p>
+			<br/>
+			<p style="color: #64748b; font-size: 12px;">%s</p>
+		</div>
+	`, order.CustomerName, order.InvoiceNumber, StoreConfig["Greeting"])
 
 	m.SetBody("text/html", htmlBody)
-	m.Attach(pdfPath) 
+	m.Attach(pdfPath)
 
 	d := gomail.NewDialer("smtp.gmail.com", 587, EmailSender, EmailPassword)
 	if err := d.DialAndSend(m); err != nil {
@@ -173,6 +176,10 @@ func sendReceiptEmail(order *models.Order) {
 
 // Function untuk Kirim Email
 func sendEmailNotification(order *models.Order, paymentURL string) {
+	// PERBAIKAN: Ambil variabel environment tepat saat fungsi dijalankan
+	EmailSender := os.Getenv("EMAIL_SENDER")
+	EmailPassword := os.Getenv("EMAIL_PASSWORD")
+
 	m := gomail.NewMessage()
 	m.SetHeader("From", EmailSender)
 	m.SetHeader("To", order.CustomerEmail)
@@ -181,35 +188,35 @@ func sendEmailNotification(order *models.Order, paymentURL string) {
 	paymentActionHTML := ""
 	if order.PaymentMethod == "Cash" {
 		paymentActionHTML = `<div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin-top: 20px;">
-            <h3 style="color: #d97706; margin: 0 0 5px 0;">Pembayaran Tunai (Di Kasir)</h3>
-            <p style="margin: 0; color: #92400e;">Silakan tunjukkan email ini kepada Kasir kami untuk melakukan pembayaran dan memproses pesanan Anda.</p>
-        </div>`
+			<h3 style="color: #d97706; margin: 0 0 5px 0;">Pembayaran Tunai (Di Kasir)</h3>
+			<p style="margin: 0; color: #92400e;">Silakan tunjukkan email ini kepada Kasir kami untuk melakukan pembayaran dan memproses pesanan Anda.</p>
+		</div>`
 	} else {
 		paymentActionHTML = fmt.Sprintf(`
-            <h3>Silakan selesaikan pembayaran melalui link ini:</h3>
-            <a href="%s" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: bold; display: inline-block;">Bayar Sekarang (QRIS/Transfer)</a>
-            <br><br>
-            <p style="font-size: 12px; color: #64748b;">Jika tombol tidak berfungsi, copy-paste link ini ke browser: <br> %s</p>
-        `, paymentURL, paymentURL)
+			<h3>Silakan selesaikan pembayaran melalui link ini:</h3>
+			<a href="%s" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: bold; display: inline-block;">Bayar Sekarang (QRIS/Transfer)</a>
+			<br><br>
+			<p style="font-size: 12px; color: #64748b;">Jika tombol tidak berfungsi, copy-paste link ini ke browser: <br> %s</p>
+		`, paymentURL, paymentURL)
 	}
 
 	htmlBody := fmt.Sprintf(`
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #2563eb;">Halo, %s!</h2>
-            <p>Terima kasih telah memesan di Warpulz.</p>
-            <div style="background-color: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-                <p style="margin: 0 0 10px 0;"><b>Detail Pesanan Anda:</b></p>
-                <ul style="list-style-type: none; padding: 0; margin: 0;">
-                    <li style="margin-bottom: 5px;"><b>Tipe:</b> %s (Meja: %s)</li>
-                    <li style="margin-bottom: 5px;"><b>Menu:</b> %s</li>
-                    <li style="margin-bottom: 5px;"><b>Metode Bayar:</b> %s</li>
-                    <li style="margin-bottom: 5px;"><b>Total:</b> Rp %d</li>
-                    <li><b>Invoice:</b> %s</li>
-                </ul>
-            </div>
-            %s
-        </div>
-    `, order.CustomerName, order.OrderType, order.TableNumber, order.ProductName, order.PaymentMethod, order.TotalPrice, order.InvoiceNumber, paymentActionHTML)
+		<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+			<h2 style="color: #2563eb;">Halo, %s!</h2>
+			<p>Terima kasih telah memesan di Warpulz.</p>
+			<div style="background-color: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+				<p style="margin: 0 0 10px 0;"><b>Detail Pesanan Anda:</b></p>
+				<ul style="list-style-type: none; padding: 0; margin: 0;">
+					<li style="margin-bottom: 5px;"><b>Tipe:</b> %s (Meja: %s)</li>
+					<li style="margin-bottom: 5px;"><b>Menu:</b> %s</li>
+					<li style="margin-bottom: 5px;"><b>Metode Bayar:</b> %s</li>
+					<li style="margin-bottom: 5px;"><b>Total:</b> Rp %d</li>
+					<li><b>Invoice:</b> %s</li>
+				</ul>
+			</div>
+			%s
+		</div>
+	`, order.CustomerName, order.OrderType, order.TableNumber, order.ProductName, order.PaymentMethod, order.TotalPrice, order.InvoiceNumber, paymentActionHTML)
 
 	m.SetBody("text/html", htmlBody)
 	d := gomail.NewDialer("smtp.gmail.com", 587, EmailSender, EmailPassword)

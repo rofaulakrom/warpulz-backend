@@ -1,10 +1,12 @@
-# Menggunakan versi Go yang lebih baru (1.23) agar kompatibel
 FROM golang:1.25.6-alpine
 
-WORKDIR /app
+# Install sertifikat keamanan & zona waktu (Penting untuk kirim Email Gmail & Midtrans!)
+RUN apk update && apk add --no-cache git ca-certificates tzdata
 
-# Install git jika diperlukan untuk mengambil dependency
-RUN apk add --no-cache git
+# Matikan CGO agar proses kompilasi jauh lebih cepat dan ringan di server gratisan
+ENV CGO_ENABLED=0 GOOS=linux
+
+WORKDIR /app
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -14,7 +16,6 @@ COPY . .
 # Build aplikasi
 RUN go build -o main .
 
-# Hugging Face menggunakan port 7860 secara default
 EXPOSE 7860
 ENV PORT=7860
 
