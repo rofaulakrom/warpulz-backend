@@ -36,7 +36,7 @@ var StoreConfig = map[string]string{
 	"Phone":     "WA: 0895-3643-70623",
 	"WiFi_User": "WARPULZ_GUEST",
 	"WiFi_Pass": "nyemekjosjis",
-	"Greeting":  "Jika nyaman beritahu teman, jika tidak beritahu kami. \nTerima kasih! Sampai jumpa kembali.",
+	"Greeting":  "Terima kasih! Sampai jumpa kembali.",
 }
 
 // ==========================================
