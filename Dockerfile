@@ -1,5 +1,5 @@
 # Menggunakan versi Go yang lebih baru (1.23) agar kompatibel
-FROM golang:1.23-alpine
+FROM golang:1.25.6-alpine
 
 WORKDIR /app
 
