@@ -163,7 +163,7 @@ func sendReceiptEmail(order *models.Order) {
 	m.SetBody("text/html", htmlBody)
 	m.Attach(pdfPath)
 
-	d := gomail.NewDialer("smtp.gmail.com", 587, EmailSender, EmailPassword)
+	d := gomail.NewDialer("smtp.gmail.com", 465, EmailSender, EmailPassword)
 	if err := d.DialAndSend(m); err != nil {
 		fmt.Println("❌ Gagal kirim email lunas:", err)
 	} else {
@@ -219,7 +219,7 @@ func sendEmailNotification(order *models.Order, paymentURL string) {
 	`, order.CustomerName, order.OrderType, order.TableNumber, order.ProductName, order.PaymentMethod, order.TotalPrice, order.InvoiceNumber, paymentActionHTML)
 
 	m.SetBody("text/html", htmlBody)
-	d := gomail.NewDialer("smtp.gmail.com", 587, EmailSender, EmailPassword)
+	d := gomail.NewDialer("smtp.gmail.com", 465, EmailSender, EmailPassword)
 
 	if err := d.DialAndSend(m); err != nil {
 		fmt.Println("❌ Gagal kirim email:", err)
