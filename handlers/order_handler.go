@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -18,18 +22,15 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/snap"
-	"gopkg.in/gomail.v2"
 )
 
 var validate = validator.New()
 
 var (
 	MidtransServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
-	// Variabel Email dihapus dari sini agar dipanggil langsung di dalam fungsinya
 )
 
 // --- CONFIG CUSTOM DATA TOKO ---
-// Anda bisa mengubah isi data ini sesuai dengan toko Anda
 var StoreConfig = map[string]string{
 	"Name":      "Warkop Pulang (WARPULZ)",
 	"Address":   "Jl. Sapta Marga, Campaka, Kec. Andir, Kota Bandung, Jawa Barat",
@@ -131,7 +132,87 @@ func DownloadReceipt(c echo.Context) error {
 }
 
 // ==========================================
-// FUNGSI BARU: KIRIM EMAIL DENGAN LAMPIRAN PDF
+// MESIN UTAMA: KIRIM EMAIL VIA BREVO API (ANTI-BLOKIR)
+// ==========================================
+func sendEmailBrevoAPI(toEmail, subject, htmlBody, attachmentFilename string) error {
+	apiKey := os.Getenv("BREVO_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("BREVO_API_KEY tidak ditemukan di environment")
+	}
+
+	// Gunakan EMAIL_SENDER jika ada, jika tidak pakai fallback
+	senderEmail := os.Getenv("EMAIL_SENDER")
+	if senderEmail == "" {
+		senderEmail = "admin@warkoppulang.com"
+	}
+
+	url := "https://api.brevo.com/v3/smtp/email"
+
+	// Struktur Payload JSON untuk Brevo
+	payload := map[string]interface{}{
+		"sender": map[string]string{
+			"name":  StoreConfig["Name"],
+			"email": senderEmail,
+		},
+		"to": []map[string]string{
+			{
+				"email": toEmail,
+			},
+		},
+		"subject":     subject,
+		"htmlContent": htmlBody,
+	}
+
+	// Jika ada file PDF yang ingin dilampirkan (Untuk struk Lunas)
+	if attachmentFilename != "" {
+		fileData, err := os.ReadFile(attachmentFilename)
+		if err == nil {
+			// Brevo butuh file PDF diubah jadi Base64
+			encoded := base64.StdEncoding.EncodeToString(fileData)
+			payload["attachment"] = []map[string]string{
+				{
+					"content": encoded,
+					"name":    attachmentFilename,
+				},
+			}
+		} else {
+			fmt.Println("⚠️ Gagal membaca PDF untuk dilampirkan:", err)
+		}
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("gagal menyusun JSON: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("gagal membuat request HTTP: %v", err)
+	}
+
+	// Headers Wajib Brevo
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("api-key", apiKey)
+	req.Header.Set("content-type", "application/json")
+
+	// Eksekusi pengiriman
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request ke Brevo gagal: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Brevo API error (%d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+
+// ==========================================
+// KIRIM EMAIL STRUK LUNAS + LAMPIRAN PDF
 // ==========================================
 func sendReceiptEmail(order *models.Order) {
 	pdfPath, err := generateReceiptPDF(order)
@@ -139,15 +220,6 @@ func sendReceiptEmail(order *models.Order) {
 		fmt.Println("❌ Gagal membuat PDF:", err)
 		return
 	}
-
-	// PERBAIKAN: Ambil variabel environment tepat saat fungsi dijalankan
-	EmailSender := os.Getenv("EMAIL_SENDER")
-	EmailPassword := os.Getenv("EMAIL_PASSWORD")
-
-	m := gomail.NewMessage()
-	m.SetHeader("From", EmailSender)
-	m.SetHeader("To", order.CustomerEmail)
-	m.SetHeader("Subject", "✅ Pembayaran Berhasil - "+order.InvoiceNumber)
 
 	htmlBody := fmt.Sprintf(`
 		<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; text-align: center;">
@@ -160,12 +232,10 @@ func sendReceiptEmail(order *models.Order) {
 		</div>
 	`, order.CustomerName, order.InvoiceNumber, StoreConfig["Greeting"])
 
-	m.SetBody("text/html", htmlBody)
-	m.Attach(pdfPath)
-
-	d := gomail.NewDialer("smtp.gmail.com", 465, EmailSender, EmailPassword)
-	if err := d.DialAndSend(m); err != nil {
-		fmt.Println("❌ Gagal kirim email lunas:", err)
+	// Panggil fungsi Brevo API
+	err = sendEmailBrevoAPI(order.CustomerEmail, "✅ Pembayaran Berhasil - "+order.InvoiceNumber, htmlBody, pdfPath)
+	if err != nil {
+		fmt.Println("❌ Gagal kirim email lunas via Brevo:", err)
 	} else {
 		fmt.Println("✅ Email PDF Struk terkirim ke:", order.CustomerEmail)
 	}
@@ -174,17 +244,10 @@ func sendReceiptEmail(order *models.Order) {
 	os.Remove(pdfPath)
 }
 
-// Function untuk Kirim Email
+// ==========================================
+// KIRIM EMAIL NOTIFIKASI PESANAN BARU
+// ==========================================
 func sendEmailNotification(order *models.Order, paymentURL string) {
-	// PERBAIKAN: Ambil variabel environment tepat saat fungsi dijalankan
-	EmailSender := os.Getenv("EMAIL_SENDER")
-	EmailPassword := os.Getenv("EMAIL_PASSWORD")
-
-	m := gomail.NewMessage()
-	m.SetHeader("From", EmailSender)
-	m.SetHeader("To", order.CustomerEmail)
-	m.SetHeader("Subject", "Struk Pesanan - "+order.InvoiceNumber)
-
 	paymentActionHTML := ""
 	if order.PaymentMethod == "Cash" {
 		paymentActionHTML = `<div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin-top: 20px;">
@@ -218,11 +281,10 @@ func sendEmailNotification(order *models.Order, paymentURL string) {
 		</div>
 	`, order.CustomerName, order.OrderType, order.TableNumber, order.ProductName, order.PaymentMethod, order.TotalPrice, order.InvoiceNumber, paymentActionHTML)
 
-	m.SetBody("text/html", htmlBody)
-	d := gomail.NewDialer("smtp.gmail.com", 465, EmailSender, EmailPassword)
-
-	if err := d.DialAndSend(m); err != nil {
-		fmt.Println("❌ Gagal kirim email:", err)
+	// Panggil fungsi Brevo API tanpa attachment
+	err := sendEmailBrevoAPI(order.CustomerEmail, "Struk Pesanan - "+order.InvoiceNumber, htmlBody, "")
+	if err != nil {
+		fmt.Println("❌ Gagal kirim email notifikasi via Brevo:", err)
 	} else {
 		fmt.Println("✅ Email notifikasi terkirim ke:", order.CustomerEmail)
 	}
