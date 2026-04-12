@@ -41,14 +41,18 @@ func ConnectDB() {
 		)
 	}
 
-	connection, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatal("❌ Gagal konek ke database: ", err)
-	}
+	connection, err := gorm.Open(postgres.New(postgres.Config{
+        DSN:                  dsn,
+        PreferSimpleProtocol: true, // <--- Mencegah error antrean di Supabase (42P05)
+    }), &gorm.Config{})
+    
+    if err != nil {
+        log.Fatal("❌ Gagal konek ke database: ", err)
+    }
 
-	DB = connection
-	fmt.Println("✅ Sukses terhubung ke Database PostgreSQL!")
-
+    DB = connection
+    fmt.Println("✅ Sukses terhubung ke Database PostgreSQL!")
+	
 	// === AUTO MIGRATION ===
 	fmt.Println("⏳ Sedang melakukan migrasi database...")
 	// Saya gabungkan semua tabel di sini agar lebih rapi
